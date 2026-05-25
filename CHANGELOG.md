@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Changed
 
+ - Windows - Provide more error details if the UI fails to start because the system proxy is enabled (#2005).
+
 - **Fixes:**
   - Windows DDA Grabber - Prevent image updates when mouse is moved. Provide a Warning on incompatible setting. (#2002)
   - EffectModule - Reference Counting (Use-After-Free) bugs (#2010) - _Thanks to @wr-web_
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - EffectFileHandler: Refactor effect file management
 - EffectEngine: Added dedicated `hyperion.effect` debug logging category
 - Empty image consistency applied. 0×0 is now the canonical empty image; 1×1 is no longer treated as empty
+- ProviderRestAPI - Add error when failing to load Qt SSL
 
 ## [2.2.1](https://github.com/hyperion-project/hyperion.ng/releases/tag/2.2.1) - 2026-04-06
 
