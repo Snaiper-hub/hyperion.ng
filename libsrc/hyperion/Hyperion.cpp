@@ -7,6 +7,10 @@
 #include <QThread>
 #include <QVariantMap>
 
+#ifdef _WIN32
+#include <QSettings>
+#endif
+
 // hyperion include
 #include <hyperion/Hyperion.h>
 
@@ -101,6 +105,39 @@ Hyperion::~Hyperion()
 void Hyperion::start()
 {
 	Debug(_log, "Hyperion instance starting...");
+
+#ifdef _WIN32
+	// Auto-suspend if Windows Night Light is off (prevents LED flash on startup)
+	QSettings nightLightReg(
+		"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\"
+		"$$windows.data.bluelightreduction.bluelightreductionstate\\Current",
+		QSettings::NativeFormat
+	);
+	QByteArray nlData = nightLightReg.value("Data").toByteArray();
+	if (!nlData.isEmpty())
+	{
+		QByteArray nlPattern = QByteArrayLiteral("\x69\x00\x73\x00\x45\x00\x6e\x00\x61\x00\x62\x00\x6c\x00\x65\x00\x64\x00");
+		int nlIdx = nlData.indexOf(nlPattern);
+		if (nlIdx >= 0)
+		{
+			int nlSearchEnd = qMin(nlIdx + nlPattern.size() + 64, nlData.size() - 4);
+			bool nlActive = false;
+			for (int j = nlIdx + nlPattern.size(); j < nlSearchEnd; ++j)
+			{
+				if (nlData[j] == '\x0b')
+				{
+					nlActive = (nlData[j + 4] == '\x01');
+					break;
+				}
+			}
+			if (!nlActive)
+			{
+				Info(_log, "Windows Night Light is off, suspending immediately");
+				setSuspend(true);
+			}
+		}
+	}
+#endif
 
 	_statisticsTimer.reset(new QTimer());
 	_statisticsTimer->setTimerType(Qt::PreciseTimer);

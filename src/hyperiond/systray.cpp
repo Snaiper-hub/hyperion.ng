@@ -43,37 +43,7 @@ namespace {
 		return QIcon(QPixmap::fromImage(img));
 	}
 
-#ifdef _WIN32
-	// CloudStore registry path for Night Light state
-	// QSettings::NativeFormat reads directly from Windows registry
-	bool isNightLightActive()
-	{
-		QSettings reg(
-			"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\"
-			"$$windows.data.bluelightreduction.bluelightreductionstate\\Current",
-			QSettings::NativeFormat
-		);
-		QByteArray data = reg.value("Data").toByteArray();
-		if (data.isEmpty())
-			return false;
-
-		// Search for "isEnabled" UTF-16LE pattern in the serialized blob
-		QByteArray pattern = QByteArrayLiteral("\x69\x00\x73\x00\x45\x00\x6e\x00\x61\x00\x62\x00\x6c\x00\x65\x00\x64\x00");
-		int idx = data.indexOf(pattern);
-		if (idx < 0)
-			return false;
-
-		// After the key, search for VT_BOOL (0x0b) followed by the bool value
-		int searchEnd = qMin(idx + pattern.size() + 64, data.size() - 4);
-		for (int j = idx + pattern.size(); j < searchEnd; ++j)
-		{
-			if (data[j] == '\x0b')
-				return (data[j + 4] == '\x01');
-		}
-		return false;
 	}
-#endif
-}
  
 SysTray::SysTray(HyperionDaemon* hyperiond)
 	: QSystemTrayIcon(QIcon(":/hyperion-32px.png"), hyperiond)
@@ -469,13 +439,6 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		_trayMenu->insertAction(_settingsAction, _firstInstanceAction);
 
 		updateStartupSourceIndicator();
-
-#ifdef _WIN32
-		if (!isNightLightActive())
-		{
-			emit signalEvent(Event::Suspend);
-		}
-#endif
 	}
 	else
 	{
