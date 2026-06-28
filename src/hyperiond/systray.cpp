@@ -115,7 +115,7 @@ void SysTray::createBaseTrayMenu()
 	});
 
 #ifdef _WIN32
-	_autorunAction = createAction(tr("&Disable autostart"), ":/autorun.svg", [this]() {
+	_autorunAction = createAction(tr("&Enable autostart"), ":/autorun.svg", [this]() {
 		setAutorunState();
 	});
 #endif
@@ -674,7 +674,7 @@ bool SysTray::getCurrentAutorunState()
 		QToolButton* btn = qobject_cast<QToolButton*>(wa->defaultWidget());
 		if (btn)
 		{
-			btn->setText(QStringLiteral("  ") + (enabled ? tr("&Disable autostart") : tr("&Enable autostart")));
+			btn->setText(QStringLiteral("  ") + (!enabled ? tr("&Disable autostart") : tr("&Enable autostart")));
 		}
 	}
 	return enabled;
