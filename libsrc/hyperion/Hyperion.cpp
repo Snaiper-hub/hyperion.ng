@@ -85,6 +85,7 @@ Hyperion::Hyperion(quint8 instance, QObject* parent)
 	, _layoutLedCount(0)
 	, _colorOrder("rgb")
 	, _statisticsTimer(nullptr)
+	, _suspendOnStart(false)
 {
 	qRegisterMetaType<ComponentList>("ComponentList");
 	qRegisterMetaType<Image<ColorRgb>>("ColorRgbImage");
@@ -107,33 +108,35 @@ void Hyperion::start()
 	Debug(_log, "Hyperion instance starting...");
 
 #ifdef _WIN32
-	// Auto-suspend if Windows Night Light is off (prevents LED flash on startup)
-	QSettings nightLightReg(
-		"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\"
-		"$$windows.data.bluelightreduction.bluelightreductionstate\\Current",
-		QSettings::NativeFormat
-	);
-	QByteArray nlData = nightLightReg.value("Data").toByteArray();
-	if (!nlData.isEmpty())
+	// Check Night Light state early; apply suspend after connections are set up
 	{
-		QByteArray nlPattern = QByteArrayLiteral("\x69\x00\x73\x00\x45\x00\x6e\x00\x61\x00\x62\x00\x6c\x00\x65\x00\x64\x00");
-		int nlIdx = nlData.indexOf(nlPattern);
-		if (nlIdx >= 0)
+		QSettings nightLightReg(
+			"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\"
+			"$$windows.data.bluelightreduction.bluelightreductionstate\\Current",
+			QSettings::NativeFormat
+		);
+		QByteArray nlData = nightLightReg.value("Data").toByteArray();
+		if (!nlData.isEmpty())
 		{
-			int nlSearchEnd = qMin(nlIdx + nlPattern.size() + 64, nlData.size() - 4);
-			bool nlActive = false;
-			for (int j = nlIdx + nlPattern.size(); j < nlSearchEnd; ++j)
+			QByteArray nlPattern = QByteArrayLiteral("\x69\x00\x73\x00\x45\x00\x6e\x00\x61\x00\x62\x00\x6c\x00\x65\x00\x64\x00");
+			int nlIdx = nlData.indexOf(nlPattern);
+			if (nlIdx >= 0)
 			{
-				if (nlData[j] == '\x0b')
+				int nlSearchEnd = qMin(nlIdx + nlPattern.size() + 64, nlData.size() - 4);
+				bool nlActive = false;
+				for (int j = nlIdx + nlPattern.size(); j < nlSearchEnd; ++j)
 				{
-					nlActive = (nlData[j + 4] == '\x01');
-					break;
+					if (nlData[j] == '\x0b')
+					{
+						nlActive = (nlData[j + 4] == '\x01');
+						break;
+					}
 				}
-			}
-			if (!nlActive)
-			{
-				Info(_log, "Windows Night Light is off, suspending immediately");
-				setSuspend(true);
+				if (!nlActive)
+				{
+					Info(_log, "Windows Night Light is off, will suspend after setup");
+					_suspendOnStart = true;
+				}
 			}
 		}
 	}
@@ -193,6 +196,14 @@ void Hyperion::start()
 	// listen for suspend/resume, idle requests to perform core activation/deactivation actions
 	connect(this, &Hyperion::suspendRequest, this, &Hyperion::setSuspend);
 	connect(this, &Hyperion::idleRequest, this, &Hyperion::setIdle);
+
+#ifdef _WIN32
+	if (_suspendOnStart)
+	{
+		Info(_log, "Applying auto-suspend - Night Light was off at startup");
+		setSuspend(true);
+	}
+#endif
 
 	_muxer->start();
 

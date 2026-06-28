@@ -632,4 +632,8 @@ private:
 	QScopedPointer<QTimer> _statisticsTimer;
 	std::atomic<int> _totalImagesProcessed{ 0 };
 	std::atomic<int> _imagesSkipped{ 0 };
+
+#ifdef _WIN32
+	bool _suspendOnStart = false;
+#endif
 };
