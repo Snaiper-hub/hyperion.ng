@@ -17,6 +17,31 @@
 
 #include <QDesktopServices>
 #include <QSettings>
+#include <QWidgetAction>
+#include <QToolButton>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QFrame>
+#include <QPainter>
+
+namespace {
+	QIcon recoloredIcon(const QString &svgPath, const QColor &color, int size = 18)
+	{
+		QIcon svgIcon(svgPath);
+		QImage img = svgIcon.pixmap(QSize(size, size)).toImage().convertToFormat(QImage::Format_ARGB32);
+		for (int y = 0; y < img.height(); y++)
+		{
+			QRgb *line = reinterpret_cast<QRgb*>(img.scanLine(y));
+			for (int x = 0; x < img.width(); x++)
+			{
+				int a = qAlpha(line[x]);
+				if (a > 0)
+					line[x] = qRgba(color.red(), color.green(), color.blue(), a);
+			}
+		}
+		return QIcon(QPixmap::fromImage(img));
+	}
+}
  
 SysTray::SysTray(HyperionDaemon* hyperiond)
 	: QSystemTrayIcon(QIcon(":/hyperion-32px.png"), hyperiond)
@@ -30,6 +55,10 @@ SysTray::SysTray(HyperionDaemon* hyperiond)
 #if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))
 	QGuiApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 #endif
+
+	// Detect dark theme
+	QPalette pal = QGuiApplication::palette();
+	_darkTheme = pal.color(QPalette::Window).lightness() < 128;
 
 	setupConnections();
 	createBaseTrayMenu();
@@ -63,6 +92,15 @@ void SysTray::onIconActivated(QSystemTrayIcon::ActivationReason reason)
 void SysTray::createBaseTrayMenu()
 {
 	_trayMenu = new QMenu();
+
+	// Dark theme styling
+	if (_darkTheme)
+	{
+		_trayMenu->setStyleSheet(
+			"QMenu { background-color: #2b2b2b; color: #e0e0e0; border: 1px solid #555; }"
+			"QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
+		);
+	}
 
 	// Create actions
 	_settingsAction = createAction(tr("&Settings"), ":/settings.svg", [this]() {
@@ -121,9 +159,24 @@ void SysTray::setupConnections()
 
 QAction *SysTray::createAction(const QString &text, const QString &iconPath, const std::function<void()> &method)
 {
-	auto* action = new QAction(text, this);
-	action->setIcon(QIcon(iconPath));
-	connect(action, &QAction::triggered, this, method);
+	QColor ic = _darkTheme ? Qt::white : Qt::black;
+	QIcon icon = recoloredIcon(iconPath, ic, 18);
+
+	auto* btn = new QToolButton();
+	btn->setIcon(icon);
+	btn->setText(QStringLiteral("  ") + text);
+	btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+	btn->setIconSize(QSize(18, 18));
+	btn->setAutoRaise(true);
+	btn->setCursor(Qt::PointingHandCursor);
+	btn->setStyleSheet(
+		"QToolButton { border: none; text-align: left; padding: 4px 16px 4px 10px; }"
+		"QToolButton:hover { background-color: rgba(128,128,128,64); }"
+	);
+	QObject::connect(btn, &QToolButton::clicked, this, method);
+
+	auto* action = new QWidgetAction(this);
+	action->setDefaultWidget(btn);
 	return action;
 }
 
@@ -194,35 +247,26 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		return;
 	}
 
-	// Create a new menu for this instance
+	// Get instance name
 	QString instanceName;
 	if (auto mgr = _instanceManagerWeak.toStrongRef())
 	{
 		instanceName = mgr->getInstanceName(instance);
 	}
-	auto* instanceMenu = new QMenu(instanceName);
 
-	// Create actions for the instance menu
-	QAction *colorAction = createAction(tr("&Color"), ":/color.svg", [this, instance]() {
-		showColorDialog(instance);
-	});
-	instanceMenu->addAction(colorAction);
+	// First instance: horizontal icon buttons directly in main menu
+	if (!_firstInstanceAction)
+	{
+		_firstInstanceNumber = instance;
 
 #if defined(ENABLE_EFFECTENGINE)
-	// Get the list of effects
-	const QList<EffectDefinition> effectsDefinitions = EffectFileHandler::getInstance()->getEffects();
+		_firstEffectsMenu = new QMenu(tr("Effects"));
+		_firstEffectsMenu->setObjectName("effectsMenu");
 
-	if(!effectsDefinitions.empty())
-	{
-		// Effects submenu
-		auto* effectsMenu = new QMenu(tr("Effects"), instanceMenu);
-		effectsMenu->setObjectName("effectsMenu");
-		instanceMenu->addMenu(effectsMenu);
-
-		// Add effects when the menu is first created
+		const QList<EffectDefinition> effectsDefinitions = EffectFileHandler::getInstance()->getEffects();
 		for (const auto& effect : effectsDefinitions)
 		{
-			QAction const * effectAction = effectsMenu->addAction(effect.name);
+			QAction* effectAction = _firstEffectsMenu->addAction(effect.name);
 			connect(effectAction, &QAction::triggered, [this, instance, effectName = effect.name]() {
 				setEffect(instance, effectName);
 			});
@@ -231,23 +275,163 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		{
 			connect(eff.get(), &EffectFileHandler::effectListChanged, this, &SysTray::onEffectListChanged);
 		}
-	}
 #endif
 
-	QAction *clearAction = createAction(tr("&Clear"), ":/clear.svg", [instance, this]() {
-		clearSource(instance);
-	});
-	instanceMenu->addAction(clearAction);
+		QColor ic = _darkTheme ? Qt::white : Qt::black;
 
-	_trayMenu->insertMenu(_suspendAction, instanceMenu);
+		auto* btnWidget = new QWidget();
+		auto* hLayout = new QHBoxLayout(btnWidget);
+		hLayout->setContentsMargins(8, 6, 8, 0);
+		hLayout->setSpacing(4);
+		btnWidget->setFixedHeight(37);
 
-	// Store the menu for later reference
-	_instanceMenus[instance] = instanceMenu;
+		auto makeBtnGroup = [&](const QIcon& icon, const QString& tip, bool checkable = false) -> std::tuple<QToolButton*, QFrame*> {
+			auto* container = new QWidget();
+			container->setFixedWidth(26);
+			auto* col = new QVBoxLayout(container);
+			col->setContentsMargins(0, 0, 0, 0);
+			col->setSpacing(1);
+
+			auto* btn = new QToolButton();
+			btn->setIcon(icon);
+			btn->setToolTip(tip);
+			if (checkable) btn->setCheckable(true);
+			btn->setIconSize(QSize(26, 26));
+			btn->setAutoRaise(true);
+			btn->setStyleSheet("QToolButton:hover { background-color: #3d6db5; }");
+			col->addWidget(btn, 0, Qt::AlignHCenter);
+
+			auto* ind = new QFrame();
+			ind->setFixedSize(26, 4);
+			ind->setStyleSheet("background-color: transparent; border-radius: 2px;");
+			col->addWidget(ind, 0, Qt::AlignHCenter);
+
+			hLayout->addWidget(container, 0, Qt::AlignVCenter);
+			return {btn, ind};
+		};
+
+		auto [colorBtn, colorInd] = makeBtnGroup(recoloredIcon(":/color.svg", ic, 26), tr("Color"));
+
+#if defined(ENABLE_EFFECTENGINE)
+		auto [effectsBtn, effectsInd] = makeBtnGroup(recoloredIcon(":/effects.svg", ic, 26), tr("Effects"), true);
+		effectsBtn->setPopupMode(QToolButton::InstantPopup);
+		effectsBtn->setMenu(_firstEffectsMenu);
+#else
+		QToolButton* effectsBtn = nullptr;
+		QFrame* effectsInd = nullptr;
+#endif
+
+		auto [clearBtn, clearInd] = makeBtnGroup(recoloredIcon(":/clear.svg", ic, 26), tr("Clear"));
+
+		// Color clicked
+		connect(colorBtn, &QToolButton::clicked, [this, colorBtn, effectsBtn, effectsInd, instance, colorInd]() {
+			QColor selectedColor = QColorDialog::getColor(_lastColor, nullptr, tr("Select Color"));
+			if (selectedColor.isValid())
+			{
+				_lastColor = selectedColor;
+				setColor(instance, selectedColor);
+				colorInd->setStyleSheet(QString(
+					"background-color: %1; border-radius: 2px;"
+				).arg(selectedColor.name()));
+				if (effectsBtn) {
+					effectsBtn->setChecked(false);
+					effectsInd->setStyleSheet(
+						"background-color: transparent; border-radius: 2px;"
+					);
+				}
+			}
+		});
+
+		// Effects triggered
+#if defined(ENABLE_EFFECTENGINE)
+		connect(_firstEffectsMenu, &QMenu::triggered, [effectsBtn, colorInd, effectsInd](QAction*) {
+			effectsBtn->setChecked(true);
+			colorInd->setStyleSheet(
+				"background-color: transparent; border-radius: 2px;"
+			);
+			effectsInd->setStyleSheet(
+				"background-color: #32cd32; border-radius: 2px;"
+			);
+		});
+#endif
+
+		// Clear clicked
+		connect(clearBtn, &QToolButton::clicked, [this, colorInd, effectsBtn, effectsInd, instance]() {
+			clearSource(instance);
+			colorInd->setStyleSheet(
+				"background-color: transparent; border-radius: 2px;"
+			);
+			if (effectsBtn) {
+				effectsBtn->setChecked(false);
+				effectsInd->setStyleSheet(
+					"background-color: transparent; border-radius: 2px;"
+				);
+			}
+		});
+
+		_firstInstanceAction = new QWidgetAction(this);
+		_firstInstanceAction->setDefaultWidget(btnWidget);
+		_trayMenu->insertAction(_settingsAction, _firstInstanceAction);
+	}
+	else
+	{
+		// Subsequent instances get submenus
+		auto* instanceMenu = new QMenu(instanceName);
+
+		QAction *colorAction = createAction(tr("&Color"), ":/color.svg", [this, instance]() {
+			showColorDialog(instance);
+		});
+		instanceMenu->addAction(colorAction);
+
+#if defined(ENABLE_EFFECTENGINE)
+		const QList<EffectDefinition> effectsDefinitions = EffectFileHandler::getInstance()->getEffects();
+		if (!effectsDefinitions.empty())
+		{
+			auto* effectsMenu = new QMenu(tr("Effects"), instanceMenu);
+			effectsMenu->setObjectName("effectsMenu");
+			instanceMenu->addMenu(effectsMenu);
+
+			for (const auto& effect : effectsDefinitions)
+			{
+				QAction* effectAction = effectsMenu->addAction(effect.name);
+				connect(effectAction, &QAction::triggered, [this, instance, effectName = effect.name]() {
+					setEffect(instance, effectName);
+				});
+			}
+			if (auto eff = EffectFileHandler::getInstance())
+			{
+				connect(eff.get(), &EffectFileHandler::effectListChanged, this, &SysTray::onEffectListChanged);
+			}
+		}
+#endif
+
+		QAction *clearAction = createAction(tr("&Clear"), ":/clear.svg", [instance, this]() {
+			clearSource(instance);
+		});
+		instanceMenu->addAction(clearAction);
+
+		_trayMenu->insertMenu(_suspendAction, instanceMenu);
+		_instanceMenus[instance] = instanceMenu;
+	}
 }
 
 void SysTray::handleInstanceStopped(quint8 instance)
 {
-	// Check if the instance exists
+	// Check if the first instance (inline buttons) is stopping
+	if (_firstInstanceAction && instance == _firstInstanceNumber)
+	{
+		_trayMenu->removeAction(_firstInstanceAction);
+		delete _firstInstanceAction;
+		_firstInstanceAction = nullptr;
+
+#if defined(ENABLE_EFFECTENGINE)
+		delete _firstEffectsMenu;
+		_firstEffectsMenu = nullptr;
+#endif
+		return;
+	}
+
+	// Check if the instance menu exists
 	if (!_instanceMenus.contains(instance))
 		return;
 
@@ -280,9 +464,24 @@ void SysTray::onEffectListChanged()
 	// Get the updated list of effects
 	const QList<EffectDefinition> effectsDefinitions = EffectFileHandler::getInstance()->getEffects();
 
+	// Update inline effects menu for the first instance
+	if (_firstEffectsMenu)
+	{
+		_firstEffectsMenu->clear();
+		quint8 instance = _firstInstanceNumber;
+		for (const auto& effect : effectsDefinitions)
+		{
+			QAction* effectAction = _firstEffectsMenu->addAction(effect.name);
+			connect(effectAction, &QAction::triggered, [this, instance, effectName = effect.name]() {
+				setEffect(instance, effectName);
+			});
+		}
+	}
+
+	// Update submenu effects for other instances
 	for (auto it = _instanceMenus.begin(); it != _instanceMenus.end(); ++it)
 	{
-		QMenu const * instanceMenu = it.value(); // Access the value (QMenu*) from the map
+		QMenu* instanceMenu = it.value();
 		quint8 instanceNumber = it.key();
 
 		QMenu* effectsMenu = instanceMenu->findChild<QMenu*>("effectsMenu");
@@ -295,7 +494,7 @@ void SysTray::onEffectListChanged()
 			// Re-add the updated list of effects
 			for (const auto& effect : effectsDefinitions)
 			{
-				QAction const * effectAction = effectsMenu->addAction(effect.name);
+				QAction* effectAction = effectsMenu->addAction(effect.name);
 				connect(effectAction, &QAction::triggered, [this, instance = instanceNumber, effectName = effect.name]() {
 					setEffect(instance, effectName);
 				});
@@ -342,14 +541,17 @@ void SysTray::settings() const
 bool SysTray::getCurrentAutorunState()
 {
 	const QSettings reg("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
-	if (reg.value("Hyperion", 0).toString() == QApplication::applicationFilePath().replace('/', '\\'))
+	bool enabled = (reg.value("Hyperion", 0).toString() == QApplication::applicationFilePath().replace('/', '\\'));
+	auto* wa = qobject_cast<QWidgetAction*>(_autorunAction);
+	if (wa)
 	{
-		_autorunAction->setText(tr("&Disable autostart"));
-		return true;
+		QToolButton* btn = qobject_cast<QToolButton*>(wa->defaultWidget());
+		if (btn)
+		{
+			btn->setText(QStringLiteral("  ") + (enabled ? tr("&Disable autostart") : tr("&Enable autostart")));
+		}
 	}
-
-	_autorunAction->setText(tr("&Enable autostart"));
-	return false;
+	return enabled;
 }
 
 void SysTray::setAutorunState()

@@ -8,6 +8,7 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QWidget>
+#include <QWidgetAction>
 #include <QColorDialog>
 #include <QCloseEvent>
 #include <QSharedPointer>
@@ -87,6 +88,14 @@ private:
 	QAction* _resumeAction;
 	QAction* _restartAction;
 	QAction* _quitAction;
+
+	bool _darkTheme = false;
+
+	// First instance inline buttons (horizontal row instead of submenu)
+	quint8 _firstInstanceNumber = 0;
+	QWidgetAction* _firstInstanceAction = nullptr;
+	QMenu* _firstEffectsMenu = nullptr;
+	QColor _lastColor = Qt::white;
 
 #ifdef _WIN32
 	QAction* _autorunAction;
