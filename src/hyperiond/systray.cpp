@@ -138,10 +138,10 @@ void SysTray::createBaseTrayMenu()
 
 		// Suspend / Resume toggle
 		auto* suspendBtn = new QToolButton();
-		suspendBtn->setIcon(recoloredIcon(":/suspend.svg", ic, 26));
-		suspendBtn->setToolTip(tr("Suspend"));
-		suspendBtn->setCheckable(true);
-		suspendBtn->setIconSize(QSize(26, 26));
+suspendBtn->setIcon(recoloredIcon(":/suspend.svg", ic, 20));
+	suspendBtn->setToolTip(tr("Suspend"));
+	suspendBtn->setCheckable(true);
+	suspendBtn->setIconSize(QSize(20, 20));
 		suspendBtn->setFixedWidth(38);
 		suspendBtn->setStyleSheet(
 			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
@@ -157,15 +157,15 @@ void SysTray::createBaseTrayMenu()
 			}
 		});
 		connect(suspendBtn, &QToolButton::toggled, [suspendBtn, ic](bool checked) {
-			suspendBtn->setIcon(recoloredIcon(checked ? ":/resume.svg" : ":/suspend.svg", ic, 26));
+			suspendBtn->setIcon(recoloredIcon(checked ? ":/resume.svg" : ":/suspend.svg", ic, 20));
 			suspendBtn->setToolTip(checked ? tr("Resume") : tr("Suspend"));
 		});
 
 		// Restart
 		auto* restartBtn = new QToolButton();
-		restartBtn->setIcon(recoloredIcon(":/restart.svg", ic, 26));
-		restartBtn->setToolTip(tr("Restart"));
-		restartBtn->setIconSize(QSize(26, 26));
+restartBtn->setIcon(recoloredIcon(":/restart.svg", ic, 20));
+	restartBtn->setToolTip(tr("Restart"));
+	restartBtn->setIconSize(QSize(20, 20));
 		restartBtn->setFixedWidth(38);
 		restartBtn->setStyleSheet(
 			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
@@ -179,9 +179,9 @@ void SysTray::createBaseTrayMenu()
 
 		// Quit
 		auto* quitBtn = new QToolButton();
-		quitBtn->setIcon(recoloredIcon(":/quit.svg", ic, 26));
-		quitBtn->setToolTip(tr("Quit"));
-		quitBtn->setIconSize(QSize(26, 26));
+quitBtn->setIcon(recoloredIcon(":/quit.svg", ic, 20));
+	quitBtn->setToolTip(tr("Quit"));
+	quitBtn->setIconSize(QSize(20, 20));
 		quitBtn->setFixedWidth(38);
 		quitBtn->setStyleSheet(
 			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
@@ -228,7 +228,7 @@ QAction *SysTray::createAction(const QString &text, const QString &iconPath, con
 	btn->setAutoRaise(true);
 	btn->setCursor(Qt::PointingHandCursor);
 	btn->setStyleSheet(
-		"QToolButton { border: none; text-align: left; padding: 4px 16px 4px 16px; }"
+		"QToolButton { border: none; text-align: left; padding: 4px 16px 4px 16px; font-size: 11pt; }"
 		"QToolButton:hover { background-color: rgba(128,128,128,64); }"
 	);
 	QObject::connect(btn, &QToolButton::clicked, this, method);
@@ -355,7 +355,7 @@ void SysTray::handleInstanceStarted(quint8 instance)
 			btn->setIcon(icon);
 			btn->setToolTip(tip);
 			if (checkable) btn->setCheckable(true);
-			btn->setIconSize(QSize(26, 26));
+			btn->setIconSize(QSize(20, 20));
 			btn->setFixedWidth(38);
 			btn->setStyleSheet(
 				"QToolButton { border: none; background: transparent; border-radius: 4px; }"
@@ -372,11 +372,11 @@ void SysTray::handleInstanceStarted(quint8 instance)
 			return {btn, ind};
 		};
 
-		auto [colorBtn, colorInd] = makeBtnGroup(recoloredIcon(":/color.svg", ic, 26), tr("Color"));
+		auto [colorBtn, colorInd] = makeBtnGroup(recoloredIcon(":/color.svg", ic, 20), tr("Color"));
 		_colorIndicator = colorInd;
 
 #if defined(ENABLE_EFFECTENGINE)
-		auto [effectsBtn, effectsInd] = makeBtnGroup(recoloredIcon(":/effects.svg", ic, 26), tr("Effects"), true);
+		auto [effectsBtn, effectsInd] = makeBtnGroup(recoloredIcon(":/effects.svg", ic, 20), tr("Effects"), true);
 		effectsBtn->setPopupMode(QToolButton::InstantPopup);
 		effectsBtn->setMenu(_firstEffectsMenu);
 		_effectsIndicator = effectsInd;
@@ -385,7 +385,7 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		QFrame* effectsInd = nullptr;
 #endif
 
-		auto [clearBtn, clearInd] = makeBtnGroup(recoloredIcon(":/clear.svg", ic, 26), tr("Clear"));
+		auto [clearBtn, clearInd] = makeBtnGroup(recoloredIcon(":/clear.svg", ic, 20), tr("Clear"));
 
 		// Color clicked
 		connect(colorBtn, &QToolButton::clicked, [this, colorBtn, effectsBtn, effectsInd, instance, colorInd]() {
