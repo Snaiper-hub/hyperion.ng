@@ -23,6 +23,7 @@
 #include <QVBoxLayout>
 #include <QFrame>
 #include <QPainter>
+#include <utils/settings.h>
 
 namespace {
 	QIcon recoloredIcon(const QString &svgPath, const QColor &color, int size = 18)
@@ -97,30 +98,20 @@ void SysTray::createBaseTrayMenu()
 	if (_darkTheme)
 	{
 		_trayMenu->setStyleSheet(
-			"QMenu { background-color: #2b2b2b; color: #e0e0e0; border: 1px solid #555; }"
+			"QMenu { background-color: #2b2b2b; color: #e0e0e0; border: 1px solid #555; padding: 6px 0; }"
 			"QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
+		);
+	}
+	else
+	{
+		_trayMenu->setStyleSheet(
+			"QMenu { padding: 6px 0; }"
 		);
 	}
 
 	// Create actions
 	_settingsAction = createAction(tr("&Settings"), ":/settings.svg", [this]() {
 		settings();
-	});
-
-	_suspendAction = createAction(tr("&Suspend"), ":/suspend.svg", [this]() {
-		emit signalEvent(Event::Suspend);
-	});
-
-	_resumeAction = createAction(tr("&Resume"), ":/resume.svg", [this]() {
-		emit signalEvent(Event::Resume);
-	});
-
-	_restartAction = createAction(tr("&Restart"), ":/restart.svg", [this]() {
-		emit signalEvent(Event::Restart);
-	});
-
-	_quitAction = createAction(tr("&Quit"), ":/quit.svg", []() {
-		QApplication::quit();
 	});
 
 #ifdef _WIN32
@@ -135,14 +126,81 @@ void SysTray::createBaseTrayMenu()
 	_trayMenu->addAction(_autorunAction);
 #endif
 
-	// Add remaining static actions
-	_trayMenu->addSeparator();
-	_trayMenu->addAction(_suspendAction);
-	_trayMenu->addAction(_resumeAction);
-	_trayMenu->addAction(_restartAction);
-	_trayMenu->addAction(_quitAction);
+	// Bottom inline row: Suspend/Resume toggle, Restart, Quit
+	{
+		auto* bottomWidget = new QWidget();
+		auto* hLayout = new QHBoxLayout(bottomWidget);
+		hLayout->setContentsMargins(12, 6, 12, 6);
+		hLayout->setSpacing(8);
+		bottomWidget->setFixedHeight(38);
+
+		QColor ic = _darkTheme ? Qt::white : Qt::black;
+
+		// Suspend / Resume toggle
+		auto* suspendBtn = new QToolButton();
+		suspendBtn->setIcon(recoloredIcon(":/suspend.svg", ic, 26));
+		suspendBtn->setToolTip(tr("Suspend"));
+		suspendBtn->setCheckable(true);
+		suspendBtn->setIconSize(QSize(26, 26));
+		suspendBtn->setFixedWidth(38);
+		suspendBtn->setStyleSheet(
+			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
+			"QToolButton:hover { background-color: #3d6db5; }"
+		);
+		hLayout->addWidget(suspendBtn, 0, Qt::AlignVCenter);
+
+		connect(suspendBtn, &QToolButton::clicked, [this, suspendBtn]() {
+			if (suspendBtn->isChecked()) {
+				emit signalEvent(Event::Suspend);
+			} else {
+				emit signalEvent(Event::Resume);
+			}
+		});
+		connect(suspendBtn, &QToolButton::toggled, [suspendBtn, ic](bool checked) {
+			suspendBtn->setIcon(recoloredIcon(checked ? ":/resume.svg" : ":/suspend.svg", ic, 26));
+			suspendBtn->setToolTip(checked ? tr("Resume") : tr("Suspend"));
+		});
+
+		// Restart
+		auto* restartBtn = new QToolButton();
+		restartBtn->setIcon(recoloredIcon(":/restart.svg", ic, 26));
+		restartBtn->setToolTip(tr("Restart"));
+		restartBtn->setIconSize(QSize(26, 26));
+		restartBtn->setFixedWidth(38);
+		restartBtn->setStyleSheet(
+			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
+			"QToolButton:hover { background-color: #3d6db5; }"
+		);
+		hLayout->addWidget(restartBtn, 0, Qt::AlignVCenter);
+
+		connect(restartBtn, &QToolButton::clicked, [this]() {
+			emit signalEvent(Event::Restart);
+		});
+
+		// Quit
+		auto* quitBtn = new QToolButton();
+		quitBtn->setIcon(recoloredIcon(":/quit.svg", ic, 26));
+		quitBtn->setToolTip(tr("Quit"));
+		quitBtn->setIconSize(QSize(26, 26));
+		quitBtn->setFixedWidth(38);
+		quitBtn->setStyleSheet(
+			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
+			"QToolButton:hover { background-color: #3d6db5; }"
+		);
+		hLayout->addWidget(quitBtn, 0, Qt::AlignVCenter);
+
+		connect(quitBtn, &QToolButton::clicked, []() {
+			QApplication::quit();
+		});
+
+		_bottomActionsRow = new QWidgetAction(this);
+		_bottomActionsRow->setDefaultWidget(bottomWidget);
+		_trayMenu->addAction(_bottomActionsRow);
+	}
 
 	setContextMenu(_trayMenu);
+
+	connect(_trayMenu, &QMenu::aboutToShow, this, &SysTray::updateStartupSourceIndicator);
 }
 
 void SysTray::setupConnections()
@@ -170,7 +228,7 @@ QAction *SysTray::createAction(const QString &text, const QString &iconPath, con
 	btn->setAutoRaise(true);
 	btn->setCursor(Qt::PointingHandCursor);
 	btn->setStyleSheet(
-		"QToolButton { border: none; text-align: left; padding: 4px 16px 4px 10px; }"
+		"QToolButton { border: none; text-align: left; padding: 4px 16px 4px 16px; }"
 		"QToolButton:hover { background-color: rgba(128,128,128,64); }"
 	);
 	QObject::connect(btn, &QToolButton::clicked, this, method);
@@ -218,7 +276,7 @@ void SysTray::showColorDialog(quint8 instance)
 	}
 	else
 	{
-		QColor selectedColor = QColorDialog::getColor (Qt::white, nullptr, tr("Select Color"));
+		QColor selectedColor = QColorDialog::getColor (getInitialDialogColor(instance), nullptr, tr("Select Color"));
 		if (selectedColor.isValid())
 		{
 			setColor(instance, selectedColor);
@@ -236,6 +294,7 @@ void SysTray::clearSource(quint8 instance) const
 	if (!hyperion.isNull())
 	{
 		emit hyperion->clear(PriorityMuxer::FG_PRIORITY);
+		emit hyperion->clear(100);
 	}
 }
 
@@ -281,13 +340,13 @@ void SysTray::handleInstanceStarted(quint8 instance)
 
 		auto* btnWidget = new QWidget();
 		auto* hLayout = new QHBoxLayout(btnWidget);
-		hLayout->setContentsMargins(8, 6, 8, 0);
-		hLayout->setSpacing(4);
-		btnWidget->setFixedHeight(37);
+		hLayout->setContentsMargins(12, 6, 12, 6);
+		hLayout->setSpacing(8);
+		btnWidget->setFixedHeight(47);
 
 		auto makeBtnGroup = [&](const QIcon& icon, const QString& tip, bool checkable = false) -> std::tuple<QToolButton*, QFrame*> {
 			auto* container = new QWidget();
-			container->setFixedWidth(26);
+			container->setFixedWidth(38);
 			auto* col = new QVBoxLayout(container);
 			col->setContentsMargins(0, 0, 0, 0);
 			col->setSpacing(1);
@@ -297,12 +356,15 @@ void SysTray::handleInstanceStarted(quint8 instance)
 			btn->setToolTip(tip);
 			if (checkable) btn->setCheckable(true);
 			btn->setIconSize(QSize(26, 26));
-			btn->setAutoRaise(true);
-			btn->setStyleSheet("QToolButton:hover { background-color: #3d6db5; }");
+			btn->setFixedWidth(38);
+			btn->setStyleSheet(
+				"QToolButton { border: none; background: transparent; border-radius: 4px; }"
+				"QToolButton:hover { background-color: #3d6db5; }"
+			);
 			col->addWidget(btn, 0, Qt::AlignHCenter);
 
 			auto* ind = new QFrame();
-			ind->setFixedSize(26, 4);
+			ind->setFixedSize(38, 4);
 			ind->setStyleSheet("background-color: transparent; border-radius: 2px;");
 			col->addWidget(ind, 0, Qt::AlignHCenter);
 
@@ -311,11 +373,13 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		};
 
 		auto [colorBtn, colorInd] = makeBtnGroup(recoloredIcon(":/color.svg", ic, 26), tr("Color"));
+		_colorIndicator = colorInd;
 
 #if defined(ENABLE_EFFECTENGINE)
 		auto [effectsBtn, effectsInd] = makeBtnGroup(recoloredIcon(":/effects.svg", ic, 26), tr("Effects"), true);
 		effectsBtn->setPopupMode(QToolButton::InstantPopup);
 		effectsBtn->setMenu(_firstEffectsMenu);
+		_effectsIndicator = effectsInd;
 #else
 		QToolButton* effectsBtn = nullptr;
 		QFrame* effectsInd = nullptr;
@@ -325,7 +389,7 @@ void SysTray::handleInstanceStarted(quint8 instance)
 
 		// Color clicked
 		connect(colorBtn, &QToolButton::clicked, [this, colorBtn, effectsBtn, effectsInd, instance, colorInd]() {
-			QColor selectedColor = QColorDialog::getColor(_lastColor, nullptr, tr("Select Color"));
+			QColor selectedColor = QColorDialog::getColor(getInitialDialogColor(instance), nullptr, tr("Select Color"));
 			if (selectedColor.isValid())
 			{
 				_lastColor = selectedColor;
@@ -372,6 +436,8 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		_firstInstanceAction = new QWidgetAction(this);
 		_firstInstanceAction->setDefaultWidget(btnWidget);
 		_trayMenu->insertAction(_settingsAction, _firstInstanceAction);
+
+		updateStartupSourceIndicator();
 	}
 	else
 	{
@@ -410,7 +476,7 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		});
 		instanceMenu->addAction(clearAction);
 
-		_trayMenu->insertMenu(_suspendAction, instanceMenu);
+		_trayMenu->insertMenu(_bottomActionsRow, instanceMenu);
 		_instanceMenus[instance] = instanceMenu;
 	}
 }
@@ -423,6 +489,8 @@ void SysTray::handleInstanceStopped(quint8 instance)
 		_trayMenu->removeAction(_firstInstanceAction);
 		delete _firstInstanceAction;
 		_firstInstanceAction = nullptr;
+		_colorIndicator = nullptr;
+		_effectsIndicator = nullptr;
 
 #if defined(ENABLE_EFFECTENGINE)
 		delete _firstEffectsMenu;
@@ -441,6 +509,64 @@ void SysTray::handleInstanceStopped(quint8 instance)
 
 	// Delete the menu to free memory
 	delete instanceMenu;
+}
+
+QColor SysTray::getInitialDialogColor(quint8 instance) const
+{
+	QSharedPointer<Hyperion> hyperion;
+	if (auto mgr = _instanceManagerWeak.toStrongRef())
+	{
+		hyperion = mgr->getHyperionInstance(instance);
+	}
+	if (!hyperion.isNull())
+	{
+		int prio = hyperion->getCurrentPriority();
+		PriorityMuxer::InputInfo info = hyperion->getPriorityInfo(prio);
+		if (info.componentId == hyperion::COMP_COLOR && !info.ledColors.isEmpty())
+		{
+			const ColorRgb& c = info.ledColors.first();
+			return QColor(c.red, c.green, c.blue);
+		}
+	}
+	return _lastColor;
+}
+
+void SysTray::updateStartupSourceIndicator()
+{
+	// Reset both indicators
+	if (_colorIndicator)
+		_colorIndicator->setStyleSheet("background-color: transparent; border-radius: 2px;");
+	if (_effectsIndicator)
+		_effectsIndicator->setStyleSheet("background-color: transparent; border-radius: 2px;");
+
+	QSharedPointer<Hyperion> hyperion;
+	if (auto mgr = _instanceManagerWeak.toStrongRef())
+	{
+		hyperion = mgr->getHyperionInstance(_firstInstanceNumber);
+	}
+	if (hyperion.isNull())
+		return;
+
+	// Reflect the currently active source from the muxer
+	int prio = hyperion->getCurrentPriority();
+	PriorityMuxer::InputInfo info = hyperion->getPriorityInfo(prio);
+	if (info.componentId == hyperion::COMP_COLOR && !info.ledColors.isEmpty())
+	{
+		const ColorRgb& c = info.ledColors.first();
+		QColor activeColor(c.red, c.green, c.blue);
+		if (_colorIndicator)
+			_colorIndicator->setStyleSheet(
+				QString("background-color: %1; border-radius: 2px;").arg(activeColor.name())
+			);
+	}
+#if defined(ENABLE_EFFECTENGINE)
+	else if (info.componentId == hyperion::COMP_EFFECT && _effectsIndicator)
+	{
+		_effectsIndicator->setStyleSheet(
+			"background-color: #32cd32; border-radius: 2px;"
+		);
+	}
+#endif
 }
 
 void SysTray::handleInstanceStateChange(InstanceState state, quint8 instance, const QString& /*name*/)

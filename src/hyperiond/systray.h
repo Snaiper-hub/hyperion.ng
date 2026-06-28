@@ -9,6 +9,7 @@
 #include <QMenu>
 #include <QWidget>
 #include <QWidgetAction>
+#include <QFrame>
 #include <QColorDialog>
 #include <QCloseEvent>
 #include <QSharedPointer>
@@ -48,6 +49,9 @@ private:
 
 	void showColorDialog(quint8 instance);
 
+	void updateStartupSourceIndicator();
+	QColor getInitialDialogColor(quint8 instance) const;
+
 	void setColor(quint8 instance, const QColor &color) const;
 	void clearSource(quint8 instance) const;
 
@@ -84,10 +88,9 @@ private:
 
 	// Actions
 	QAction* _settingsAction;
-	QAction* _suspendAction;
-	QAction* _resumeAction;
-	QAction* _restartAction;
-	QAction* _quitAction;
+
+	// Bottom inline action row (Suspend/Resume toggle, Restart, Quit)
+	QWidgetAction* _bottomActionsRow = nullptr;
 
 	bool _darkTheme = false;
 
@@ -100,6 +103,10 @@ private:
 #ifdef _WIN32
 	QAction* _autorunAction;
 #endif
+
+	// Indicator strips
+	QFrame* _colorIndicator = nullptr;
+	QFrame* _effectsIndicator = nullptr;
 
 	QColorDialog _colorDlg;
 };

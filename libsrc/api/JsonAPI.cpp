@@ -526,6 +526,9 @@ void JsonAPI::handleCommand(const JsonApiCommand& cmd, const QJsonObject &messag
 	case Command::ClearAll:
 		handleClearallCommand(message, cmd);
 	break;
+	case Command::StartupSource:
+		handleStartupSourceCommand(message, cmd);
+	break;
 	case Command::InstanceData:
 		handleInstanceDataCommand(message, cmd);
 		break;
@@ -859,6 +862,45 @@ void JsonAPI::handleClearallCommand(const QJsonObject &message, const JsonApiCom
 	QString replyMsg;
 	API::clearPriority(-1, replyMsg);
 	sendSuccessReply(cmd);
+}
+
+void JsonAPI::handleStartupSourceCommand(const QJsonObject &message, const JsonApiCommand& cmd)
+{
+	if (cmd.subCommand == SubCommand::SetStartupSource)
+	{
+		QJsonObject data = message["data"].toObject();
+		Info(_log, "Saving startup source: %s", QSTRING_CSTR(QString::fromUtf8(JsonUtils::toCompact(data))));
+		QJsonObject config;
+		config["startupSource"] = data;
+		auto hyperion = _hyperionWeak.toStrongRef();
+		if (!hyperion.isNull())
+		{
+			hyperion->saveSettings(config);
+		}
+		else
+		{
+			SettingsManager mgr(0);
+			mgr.saveSettings(config);
+		}
+		sendSuccessReply(cmd);
+	}
+	else
+	{
+		// Get stored startup source
+		QJsonObject data;
+		auto hyperion = _hyperionWeak.toStrongRef();
+		if (!hyperion.isNull())
+		{
+			data = hyperion->getSetting(settings::STARTUPSOURCE).object();
+		}
+		else
+		{
+			SettingsManager mgr(0);
+			data = mgr.getSetting(settings::STARTUPSOURCE).object();
+		}
+		Info(_log, "Read startup source: %s", QSTRING_CSTR(QString::fromUtf8(JsonUtils::toCompact(data))));
+		sendSuccessDataReply(QJsonValue(data), cmd);
+	}
 }
 
 void JsonAPI::handleAdjustmentCommand(const QJsonObject &message, const JsonApiCommand& cmd)

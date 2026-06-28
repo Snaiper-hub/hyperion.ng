@@ -27,6 +27,9 @@
 #include <hyperion/MultiColorAdjustment.h>
 #include <hyperion/LinearColorSmoothing.h>
 
+// Priority used for startup source (below FG_PRIORITY=1, above BG_PRIORITY=254)
+static const int STARTUPSOURCE_PRIORITY = 100;
+
 #if defined(ENABLE_EFFECTENGINE)
 // effect engine includes
 #include <effectengine/EffectEngine.h>
@@ -164,6 +167,65 @@ void Hyperion::start()
 #endif
 	// initial startup effect
 	hyperion::handleInitialEffect(this, getSetting(settings::FGEFFECT).object());
+
+	// apply saved startup source (overrides foreground effect if set)
+	QJsonDocument startupSrcDoc = getSetting(settings::STARTUPSOURCE);
+	Info(_log, "Startup source read: %s", QSTRING_CSTR(QString(startupSrcDoc.toJson(QJsonDocument::Compact))));
+	if (!startupSrcDoc.isNull() && startupSrcDoc.isObject())
+	{
+		QJsonObject startupSrc = startupSrcDoc.object();
+		if (!startupSrc.isEmpty())
+		{
+			QString componentId = startupSrc["componentId"].toString();
+			int duration_ms = startupSrc["duration_ms"].toInt(0);
+			// PriorityMuxer::setInput treats timeout_ms >= 0 as "current time + timeout_ms",
+			// so 0 means "expire immediately". Default to 3000ms if not set or invalid.
+			if (duration_ms <= 0)
+				duration_ms = PriorityMuxer::ENDLESS;
+
+			if (componentId == "COLOR")
+			{
+				auto color = startupSrc["color"].toArray();
+				if (color.size() >= 3)
+				{
+					QVector<ColorRgb> fg_color = {
+						ColorRgb {
+							static_cast<uint8_t>(color[0].toInt(0)),
+							static_cast<uint8_t>(color[1].toInt(0)),
+							static_cast<uint8_t>(color[2].toInt(0))
+						}
+					};
+					Info(_log, "Applying startup source COLOR (%d %d %d)", fg_color[0].red, fg_color[0].green, fg_color[0].blue);
+					setColor(STARTUPSOURCE_PRIORITY, fg_color, duration_ms, "startupSource");
+					Info(_log, "Startup source color applied");
+				}
+			}
+#if defined(ENABLE_EFFECTENGINE)
+			else if (componentId == "EFFECT")
+			{
+				QString effectName = startupSrc["effectName"].toString();
+				if (!effectName.isEmpty())
+				{
+					Info(_log, "Applying startup source EFFECT '%s'", QSTRING_CSTR(effectName));
+					int res = setEffect(effectName, STARTUPSOURCE_PRIORITY, duration_ms, "startupSource");
+					Info(_log, "Startup source effect '%s' %s", QSTRING_CSTR(effectName), (res == 0) ? "started" : "failed");
+				}
+			}
+#endif
+			else
+			{
+				Info(_log, "Unknown startup source component: %s", QSTRING_CSTR(componentId));
+			}
+		}
+		else
+		{
+			Info(_log, "Startup source data is empty, skipping");
+		}
+	}
+	else
+	{
+		Info(_log, "Startup source document is null or not an object, skipping");
+	}
 
 	// handle background effect
 	_BGEffectHandler = MAKE_TRACKED_SHARED(BGEffectHandler, sharedFromThis());

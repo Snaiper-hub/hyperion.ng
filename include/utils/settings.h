@@ -33,6 +33,7 @@ namespace settings {
 		OSEVENTS,
 		CECEVENTS,
 		SCHEDEVENTS,
+		STARTUPSOURCE,
 		INVALID
 	};
 
@@ -70,6 +71,7 @@ namespace settings {
 		case OSEVENTS:      return "osEvents";
 		case CECEVENTS:     return "cecEvents";
 		case SCHEDEVENTS:   return "schedEvents";
+		case STARTUPSOURCE: return "startupSource";
 		default:            return "invalid";
 		}
 	}
@@ -104,8 +106,9 @@ namespace settings {
 		if (type == "flatbufServer")        return FLATBUFSERVER;
 		if (type == "protoServer")          return PROTOSERVER;
 		if (type == "osEvents")             return OSEVENTS;
-		if (type == "cecEvents")            return CECEVENTS;
+		if (type == "cecEvents")           return CECEVENTS;
 		if (type == "schedEvents")          return SCHEDEVENTS;
+		if (type == "startupSource")        return STARTUPSOURCE;
 		return INVALID;
 	}
 }
