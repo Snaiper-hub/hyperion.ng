@@ -138,28 +138,36 @@ void SysTray::createBaseTrayMenu()
 		QColor ic = _darkTheme ? Qt::white : Qt::black;
 
 		// Suspend / Resume toggle
-		auto* suspendBtn = new QToolButton();
-suspendBtn->setIcon(recoloredIcon(":/suspend.svg", ic, 20));
-	suspendBtn->setToolTip(tr("Suspend"));
-	suspendBtn->setCheckable(true);
-	suspendBtn->setIconSize(QSize(20, 20));
-		suspendBtn->setFixedWidth(38);
-		suspendBtn->setStyleSheet(
+		_suspendResumeBtn = new QToolButton();
+	_suspendResumeBtn->setIcon(recoloredIcon(":/suspend.svg", ic, 20));
+	_suspendResumeBtn->setToolTip(tr("Suspend"));
+	_suspendResumeBtn->setCheckable(true);
+	_suspendResumeBtn->setIconSize(QSize(20, 20));
+		_suspendResumeBtn->setFixedWidth(38);
+		_suspendResumeBtn->setStyleSheet(
 			"QToolButton { border: none; background: transparent; border-radius: 4px; }"
 			"QToolButton:hover { background-color: #3d6db5; }"
 		);
-		hLayout->addWidget(suspendBtn, 0, Qt::AlignVCenter);
+		hLayout->addWidget(_suspendResumeBtn, 0, Qt::AlignVCenter);
 
-		connect(suspendBtn, &QToolButton::clicked, [this, suspendBtn]() {
-			if (suspendBtn->isChecked()) {
-				emit signalEvent(Event::Suspend);
-			} else {
-				emit signalEvent(Event::Resume);
+		connect(_suspendResumeBtn, &QToolButton::clicked, [this]() {
+			QSharedPointer<Hyperion> hyperion;
+			if (auto mgr = _instanceManagerWeak.toStrongRef())
+			{
+				hyperion = mgr->getHyperionInstance(_firstInstanceNumber);
 			}
+			if (hyperion.isNull())
+				return;
+
+			// isChecked() returns the post-auto-toggle state.
+			// Checked  = user just clicked Suspend → disable
+			// Unchecked = user just clicked Resume → enable
+			bool enable = !_suspendResumeBtn->isChecked();
+			emit hyperion->compStateChangeRequest(hyperion::COMP_LEDDEVICE, enable);
 		});
-		connect(suspendBtn, &QToolButton::toggled, [suspendBtn, ic](bool checked) {
-			suspendBtn->setIcon(recoloredIcon(checked ? ":/resume.svg" : ":/suspend.svg", ic, 20));
-			suspendBtn->setToolTip(checked ? tr("Resume") : tr("Suspend"));
+		connect(_suspendResumeBtn, &QToolButton::toggled, [this, ic](bool checked) {
+			_suspendResumeBtn->setIcon(recoloredIcon(checked ? ":/resume.svg" : ":/suspend.svg", ic, 20));
+			_suspendResumeBtn->setToolTip(checked ? tr("Resume") : tr("Suspend"));
 		});
 
 		// Restart
@@ -480,6 +488,18 @@ void SysTray::handleInstanceStarted(quint8 instance)
 		_trayMenu->insertMenu(_bottomActionsRow, instanceMenu);
 		_instanceMenus[instance] = instanceMenu;
 	}
+
+	// Keep suspend button in sync with async component state changes
+	if (auto mgr = _instanceManagerWeak.toStrongRef())
+	{
+		if (auto hyperion = mgr->getHyperionInstance(instance))
+		{
+			connect(hyperion.get(), &Hyperion::isSetNewComponentState, this, [this](hyperion::Components comp, bool) {
+				if (comp == hyperion::COMP_LEDDEVICE)
+					syncSuspendButton();
+			});
+		}
+	}
 }
 
 void SysTray::handleInstanceStopped(quint8 instance)
@@ -532,6 +552,20 @@ QColor SysTray::getInitialDialogColor(quint8 instance) const
 	return _lastColor;
 }
 
+void SysTray::syncSuspendButton()
+{
+	QSharedPointer<Hyperion> hyperion;
+	if (auto mgr = _instanceManagerWeak.toStrongRef())
+	{
+		hyperion = mgr->getHyperionInstance(_firstInstanceNumber);
+	}
+	if (hyperion.isNull() || !_suspendResumeBtn)
+		return;
+
+	bool isSuspended = !hyperion->isComponentEnabled(hyperion::COMP_LEDDEVICE);
+	_suspendResumeBtn->setChecked(isSuspended);
+}
+
 void SysTray::updateStartupSourceIndicator()
 {
 	// Reset both indicators
@@ -547,6 +581,8 @@ void SysTray::updateStartupSourceIndicator()
 	}
 	if (hyperion.isNull())
 		return;
+
+	syncSuspendButton();
 
 	// Reflect the currently active source from the muxer
 	int prio = hyperion->getCurrentPriority();

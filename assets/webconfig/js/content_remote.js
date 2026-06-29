@@ -132,7 +132,8 @@ $(document).ready(function () {
     if (prios.length === 0) {
       $('.sstbody').append(`<tr><td colspan="4" class="text-center text-muted">${$.i18n('remote_input_no_sources')}</td></tr>`);
       $('#auto_btn').empty();
-      appendStartupCheckbox();
+    appendStartupCheckbox();
+    appendTwilightPanel();
       return;
     }
 
@@ -246,6 +247,7 @@ $(document).ready(function () {
     $('.btn_input_selection').css("min-width", maxWidth + "px");
 
     appendStartupCheckbox();
+    appendTwilightPanel();
   }
 
   function appendStartupCheckbox() {
@@ -491,6 +493,77 @@ $(document).ready(function () {
       }
     });
   }
+
+  function appendTwilightPanel() {
+    if ($("#twilight_panel").length) return;
+    $('#auto_btn').after(
+      '<div id="twilight_panel" style="margin-top:16px; clear:both; padding:8px; background:#2b2b2b; border-radius:4px;">' +
+        '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+          '<label style="margin:0; min-width:80px;">Twilight auto-suspend</label>' +
+          '<input id="twilight_enabled" type="checkbox" data-toggle="toggle" data-onstyle="success" data-offstyle="default" data-size="small">' +
+          '<span id="twilight_status" style="margin-left:8px; font-size:12px;"></span>' +
+        '</div>' +
+        '<div id="twilight_fields" style="display:none; margin-top:8px; gap:8px; flex-wrap:wrap;">' +
+          '<div style="flex:1; min-width:120px;">' +
+            '<label style="font-size:11px;">Latitude</label>' +
+            '<input id="twilight_lat" type="number" step="0.0001" min="-90" max="90" class="form-control input-sm" style="width:100%;">' +
+          '</div>' +
+          '<div style="flex:1; min-width:120px;">' +
+            '<label style="font-size:11px;">Longitude</label>' +
+            '<input id="twilight_lon" type="number" step="0.0001" min="-180" max="180" class="form-control input-sm" style="width:100%;">' +
+          '</div>' +
+          '<div style="display:flex; align-items:flex-end;">' +
+            '<button id="twilight_save_btn" type="button" class="btn btn-primary btn-sm" style="margin-top:18px;">' +
+              '<i class="fa fa-save"></i> Save' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    // Init toggle
+    $('#twilight_enabled').bootstrapToggle();
+    // Load current settings
+    loadTwilightSettings();
+    // Save handler
+    $("#twilight_save_btn").on("click", function () {
+      const enabled = $("#twilight_enabled").prop("checked");
+      const lat = parseFloat($("#twilight_lat").val()) || 0;
+      const lon = parseFloat($("#twilight_lon").val()) || 0;
+      sendToHyperion("twilight", "set", { data: { enabled, latitude: lat, longitude: lon } });
+      $(window.hyperion).one("cmd-twilight", function () {
+        loadTwilightSettings();
+      });
+    });
+    // Toggle fields visibility
+    $("#twilight_enabled").on("change", function () {
+      const show = $(this).prop("checked");
+      if (show) {
+        $("#twilight_fields").css("display", "flex");
+      } else {
+        $("#twilight_fields").hide();
+      }
+    });
+  }
+
+  function loadTwilightSettings() {
+    sendToHyperion("twilight", "get", {});
+    $(window.hyperion).one("cmd-twilight", function (event) {
+      const data = event.response.info;
+      const enabled = data && data.enabled === true;
+      const lat = data && data.latitude ? data.latitude : 55.7558;
+      const lon = data && data.longitude ? data.longitude : 37.6173;
+      const isNight = data && data.isNight === true;
+      $("#twilight_enabled").prop("checked", enabled).change();
+      $("#twilight_lat").val(lat);
+      $("#twilight_lon").val(lon);
+      if (enabled) {
+        $("#twilight_status").text(isNight ? "NIGHT (active)" : "DAY (suspended)").css("color", isNight ? "#66ff66" : "#ff6666");
+      } else {
+        $("#twilight_status").text("Disabled");
+      }
+    });
+  }
+
 
   // Setup Event Listeners for Controls
   function setupEventListeners() {

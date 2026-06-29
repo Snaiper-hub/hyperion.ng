@@ -13,6 +13,7 @@
 #include <QColorDialog>
 #include <QCloseEvent>
 #include <QSharedPointer>
+#include <QToolButton>
 
 #include <hyperion/HyperionIManager.h>
 #include <QWeakPointer>
@@ -50,6 +51,7 @@ private:
 	void showColorDialog(quint8 instance);
 
 	void updateStartupSourceIndicator();
+	void syncSuspendButton();
 	QColor getInitialDialogColor(quint8 instance) const;
 
 	void setColor(quint8 instance, const QColor &color) const;
@@ -91,6 +93,7 @@ private:
 
 	// Bottom inline action row (Suspend/Resume toggle, Restart, Quit)
 	QWidgetAction* _bottomActionsRow = nullptr;
+	QToolButton* _suspendResumeBtn = nullptr;
 
 	bool _darkTheme = false;
 

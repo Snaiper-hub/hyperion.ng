@@ -34,6 +34,7 @@ namespace settings {
 		CECEVENTS,
 		SCHEDEVENTS,
 		STARTUPSOURCE,
+		TWILIGHT,
 		INVALID
 	};
 
@@ -72,6 +73,7 @@ namespace settings {
 		case CECEVENTS:     return "cecEvents";
 		case SCHEDEVENTS:   return "schedEvents";
 		case STARTUPSOURCE: return "startupSource";
+		case TWILIGHT:      return "twilight";
 		default:            return "invalid";
 		}
 	}
@@ -109,6 +111,7 @@ namespace settings {
 		if (type == "cecEvents")           return CECEVENTS;
 		if (type == "schedEvents")          return SCHEDEVENTS;
 		if (type == "startupSource")        return STARTUPSOURCE;
+		if (type == "twilight")             return TWILIGHT;
 		return INVALID;
 	}
 }
